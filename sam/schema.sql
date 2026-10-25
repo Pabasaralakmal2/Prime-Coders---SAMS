@@ -172,6 +172,10 @@ CREATE TABLE medical_reports (
   from_date DATE NOT NULL,
   to_date DATE NOT NULL,
   note VARCHAR(500),
+  attachment_url VARCHAR(500),
+  attachment_name VARCHAR(200),
+  attachment_type VARCHAR(100),
+  week_hint TINYINT NULL,
   review_status ENUM('Pending','Approved','Rejected') NOT NULL DEFAULT 'Pending',
   reviewed_by INT NULL,
   CONSTRAINT fk_med_stu FOREIGN KEY (student_id) REFERENCES students(student_id),
@@ -224,16 +228,25 @@ CREATE TABLE eligibility (
   CONSTRAINT fk_el_sec FOREIGN KEY (section_id) REFERENCES course_sections(section_id)
 );
 
-CREATE TABLE course_freezes (
+CREATE TABLE section_freezes (
   freeze_id INT AUTO_INCREMENT PRIMARY KEY,
   section_id INT NOT NULL,
-  hod_user_id INT NOT NULL,
-  freeze_date DATE NOT NULL,
-  reason VARCHAR(400) NOT NULL,
+  frozen_by INT NULL,
+  frozen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reason VARCHAR(400),
   force_eligible TINYINT(1) NOT NULL DEFAULT 0,
-  CONSTRAINT fk_fr_sec FOREIGN KEY (section_id) REFERENCES course_sections(section_id),
-  CONSTRAINT fk_fr_hod FOREIGN KEY (hod_user_id) REFERENCES users(user_id)
+  CONSTRAINT fk_fr_sec FOREIGN KEY (section_id) REFERENCES course_sections(section_id)
+);
+
+CREATE TABLE audit_log (
+  log_id INT AUTO_INCREMENT PRIMARY KEY,
+  event_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  user_id INT NULL,
+  email VARCHAR(160),
+  action VARCHAR(400) NOT NULL
 );
 
 CREATE INDEX idx_att_section_week ON attendance (section_id, week_no);
+CREATE INDEX idx_att_week ON attendance (section_id, student_id, week_no);
 CREATE INDEX idx_alert_status ON alerts (status, target_role);
+CREATE INDEX idx_audit_time ON audit_log (event_time);

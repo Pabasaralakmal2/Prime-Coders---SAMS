@@ -4,7 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { connectMySQL, getStatus as getMySQLStatus, syncFromStoreToMySQL, saveMySQLConfig, persistAttendanceMark } from "./mysql.js";
+import { connectMySQL, getStatus as getMySQLStatus, syncFromStoreToMySQL, saveMySQLConfig, persistAttendanceMark,
+  loadFromMySQL, persistUser, persistStudentUserId, persistLecturerUserId, persistSemesterWeek,
+  persistSectionFrozen, persistMedical, persistMedicalReview, persistRequest, persistAlert,
+  persistAlertStatus, persistAudit, persistSemesterStatus, persistFreeze } from "./mysql.js";
 import { connectPostgres, getStatus as getPostgresStatus, syncFromStoreToPostgres, savePostgresConfig } from "./postgres.js";
 import { parseExcelWorkbook, importExcelDataIntoDb } from "./excel-importer.js";
 
@@ -394,11 +397,35 @@ function send(res, code, data, headers = {}) {
 }
 
 function audit(user, action) {
-  db.audit.unshift({ at: new Date().toISOString(), userId: user?.id || null, email: user?.email || "", action });
+  const at = new Date().toISOString();
+  db.audit.unshift({ at, userId: user?.id || null, email: user?.email || "", action });
   db.audit = db.audit.slice(0, 200);
+  persistAudit(at, user?.id || null, user?.email || "", action);
+}
+
+let _autoConnected = false;
+async function ensureDbInit() {
+  if (_autoConnected) return;
+  _autoConnected = true;
+  try {
+    const res = await connectMySQL();
+    if (res?.success) {
+      const mysqlData = await loadFromMySQL();
+      if (mysqlData && mysqlData.users && mysqlData.users.length > 0) {
+        Object.assign(db, mysqlData);
+        recalcAll();
+        console.log("[SAM] Loaded", db.users.length, "users from MySQL");
+      } else {
+        await syncFromStoreToMySQL(db);
+      }
+    }
+  } catch (err) {
+    console.warn("MySQL auto-connect check:", err.message);
+  }
 }
 
 const server = http.createServer(async (req, res) => {
+  await ensureDbInit();
   const url = new URL(req.url, "http://localhost");
   try {
     if (url.pathname.startsWith("/api/")) {
@@ -556,6 +583,8 @@ async function handleApi(req, res, url) {
     db.users.push(newUser);
     stu.userId = newUserId;
     stu.status = "active";
+    await persistUser(newUser);
+    await persistStudentUserId(stu.id, newUserId);
     audit(newUser, `First-time student activation (${regNo})`);
     save();
 
@@ -606,6 +635,8 @@ async function handleApi(req, res, url) {
     db.users.push(newUser);
     lec.userId = newUserId;
     lec.status = "active";
+    await persistUser(newUser);
+    await persistLecturerUserId(lec.id, newUserId);
     audit(newUser, `First-time lecturer activation (${lec.name})`);
     save();
 
@@ -692,6 +723,10 @@ async function handleApi(req, res, url) {
     recalcAll();
     raiseAlerts();
     audit(user, `attendance section ${section.id} week ${weekNo}`);
+    for (const mark of body.marks || []) {
+      if (!new Set(["Present", "Absent", "Medical", "Excused"]).has(mark.status)) continue;
+      persistAttendanceMark(section.id, Number(mark.studentId), weekNo, mark.status, user.id, date);
+    }
     save();
     send(res, 200, { ok: true });
     return;
@@ -737,13 +772,16 @@ async function handleApi(req, res, url) {
       }
     }
 
-    db.medicals.push({
+    const newMed = {
       id: db.next.medical++, studentId: stu.id, sectionId: section.id, submission: submitted,
       from, to: String(body.to || from), note: String(body.note || "").slice(0, 500),
       attachmentUrl, attachmentName, attachmentType,
       status: "Pending", reviewedBy: null, weekHint: sem.currentWeek,
-    });
+    };
+    db.medicals.push(newMed);
+    await persistMedical(newMed);
     raiseAlerts();
+    for (const al of db.alerts.filter(a => a.status === "New")) persistAlert(al);
     audit(user, "submit medical");
     save();
     send(res, 200, { ok: true });
@@ -763,9 +801,11 @@ async function handleApi(req, res, url) {
         if (a.studentId === med.studentId && a.sectionId === med.sectionId && a.date >= med.from && a.date <= med.to && a.status === "Absent") {
           a.status = "Medical";
           a.recordedBy = user.role === "hod" ? user.id : a.recordedBy;
+          persistAttendanceMark(a.sectionId, a.studentId, a.weekNo, "Medical", a.recordedBy, a.date);
         }
       });
     }
+    await persistMedicalReview(med.id, body.status, user.id);
     recalcAll();
     audit(user, `medical ${med.id} ${body.status}`);
     save();
@@ -781,12 +821,14 @@ async function handleApi(req, res, url) {
     const sem = section && db.semesters.find((s) => s.id === section.semesterId);
     if (!section || !sem) { send(res, 400, { error: "Section required." }); return; }
     if (sem.currentWeek > 15) { send(res, 400, { error: "Excuses are considered only up to Week 15." }); return; }
-    db.requests.push({
+    const newReq = {
       id: db.next.request++, studentId: stu.id, sectionId: section.id,
       type: body.type === "Other" ? "Other" : "Excuse", date: new Date().toISOString().slice(0, 10),
       weekNo: sem.currentWeek, reason: String(body.reason || "").slice(0, 500),
       status: "Pending", recommendation: "", hodDecision: "",
-    });
+    };
+    db.requests.push(newReq);
+    await persistRequest(newReq);
     audit(user, "submit request");
     save();
     send(res, 200, { ok: true });
@@ -801,6 +843,7 @@ async function handleApi(req, res, url) {
     r.recommendation = String(body.recommendation || "").slice(0, 500);
     r.status = body.stance === "Reject" ? "Rejected" : "Recommended";
     if (body.stance === "Reject") r.hodDecision = "Committee did not recommend approval.";
+    await persistRequest(r);
     audit(user, `recommend request ${r.id}`);
     save();
     send(res, 200, { ok: true });
@@ -819,8 +862,14 @@ async function handleApi(req, res, url) {
       const gate = canEditAttendance(user, section, Number(body.weekNo));
       if (gate) { send(res, 403, { error: gate }); return; }
       const row = db.attendance.find((a) => a.studentId === r.studentId && a.sectionId === r.sectionId && a.weekNo === Number(body.weekNo));
-      if (row) { row.status = "Excused"; row.recordedBy = user.id; row.recordedTime = new Date().toISOString(); }
+      if (row) {
+        row.status = "Excused";
+        row.recordedBy = user.id;
+        row.recordedTime = new Date().toISOString();
+        await persistAttendanceMark(r.sectionId, r.studentId, Number(body.weekNo), "Excused", user.id, row.date);
+      }
     }
+    await persistRequest(r);
     recalcAll();
     audit(user, `decide request ${r.id}`);
     save();
@@ -835,6 +884,7 @@ async function handleApi(req, res, url) {
     if (!a) { send(res, 404, { error: "Not found." }); return; }
     if (!["Viewed", "Handled"].includes(body.status)) { send(res, 400, { error: "Bad status." }); return; }
     a.status = body.status;
+    await persistAlertStatus(a.id, a.status);
     save();
     send(res, 200, { ok: true });
     return;
@@ -846,11 +896,14 @@ async function handleApi(req, res, url) {
     const section = db.sections.find((s) => s.id === Number(body.sectionId));
     if (!section) { send(res, 404, { error: "Section not found." }); return; }
     section.frozen = true;
-    db.freezes.push({
+    const freezeRec = {
       id: db.next.freeze++, sectionId: section.id, hodUserId: user.id,
       date: new Date().toISOString().slice(0, 10), reason: String(body.reason || "").slice(0, 400),
       forceEligible: Boolean(body.forceEligible),
-    });
+    };
+    db.freezes.push(freezeRec);
+    await persistSectionFrozen(section.id, true);
+    await persistFreeze(freezeRec);
     recalcAll();
     audit(user, `freeze section ${section.id}`);
     save();
@@ -882,6 +935,7 @@ async function handleApi(req, res, url) {
     recalcAll();
     audit(user, `open semester ${sem.name}`);
     save();
+    try { await syncFromStoreToMySQL(db); } catch (_) {}
     send(res, 200, { ok: true, semester: sem });
     return;
   }
@@ -892,6 +946,8 @@ async function handleApi(req, res, url) {
     const week = Math.max(1, Math.min(15, Number(body.week)));
     sem.currentWeek = week;
     if (week === 15) sem.status = "closing";
+    await persistSemesterWeek(sem.id, week);
+    if (week === 15) await persistSemesterStatus(sem.id, sem.status);
     audit(user, `set week ${week}`);
     save();
     send(res, 200, { ok: true, semester: sem });
@@ -920,6 +976,7 @@ async function handleApi(req, res, url) {
     recalcAll();
     audit(user, `import ${added} students`);
     save();
+    try { await syncFromStoreToMySQL(db); } catch (_) {}
     send(res, 200, { ok: true, added });
     return;
   }
@@ -1012,6 +1069,7 @@ async function handleApi(req, res, url) {
     }
     audit(user, `Added visiting lecturer ${name}`);
     save();
+    try { await syncFromStoreToMySQL(db); } catch (_) {}
     send(res, 200, { ok: true, lecturer: lec });
     return;
   }
@@ -1030,6 +1088,7 @@ async function handleApi(req, res, url) {
       });
       audit(user, `Assigned lecturer ${lecturerId} to section ${sectionId}`);
       save();
+      try { await syncFromStoreToMySQL(db); } catch (_) {}
     }
     send(res, 200, { ok: true });
     return;
@@ -1083,14 +1142,7 @@ function filterRequests(user) {
 if (!process.env.VERCEL) {
   server.listen(PORT, HOST, async () => {
     console.log(`SAM listening on ${HOST}:${PORT}`);
-    try {
-      const res = await connectMySQL();
-      if (res?.success) {
-        await syncFromStoreToMySQL(db);
-      }
-    } catch (err) {
-      console.warn("MySQL auto-connect check:", err.message);
-    }
+    await ensureDbInit();
     try {
       const pRes = await connectPostgres();
       if (pRes?.success) {
@@ -1100,20 +1152,6 @@ if (!process.env.VERCEL) {
       console.warn("Supabase auto-connect check:", err.message);
     }
   });
-}
-
-let _autoConnected = false;
-async function ensureDbInit() {
-  if (_autoConnected) return;
-  _autoConnected = true;
-  try {
-    const res = await connectMySQL();
-    if (res?.success) {
-      await syncFromStoreToMySQL(db);
-    }
-  } catch (err) {
-    console.warn("MySQL auto-connect check:", err.message);
-  }
 }
 
 export { handleApi, send, server, db, connectMySQL, syncFromStoreToMySQL };

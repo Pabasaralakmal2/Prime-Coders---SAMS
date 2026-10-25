@@ -12,5 +12,8 @@
     "mysql2": "^3.24.6",
     "pg": "^8.16.3",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "pptxgenjs": "^4.0.1"
   }
 }
