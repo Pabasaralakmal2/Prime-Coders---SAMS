@@ -9,9 +9,9 @@ import { connectPostgres, getStatus as getPostgresStatus, syncFromStoreToPostgre
 import { parseExcelWorkbook, importExcelDataIntoDb } from "./excel-importer.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PUBLIC = path.join(__dirname, "public");
+const PUBLIC = fs.existsSync(path.join(__dirname, "..", "public", "index.html")) ? path.join(__dirname, "..", "public") : path.join(__dirname, "public");
 const STORE = path.join(__dirname, "data", "store.json");
-const PORT = 8080;
+const PORT = process.env.PORT || 8080;
 const HOST = "0.0.0.0";
 const SECRET = "prime-coders-sam-demo";
 
@@ -212,7 +212,11 @@ function load() {
 }
 let db = load();
 function save() {
-  fs.writeFileSync(STORE, JSON.stringify(db, null, 2));
+  try {
+    fs.writeFileSync(STORE, JSON.stringify(db, null, 2));
+  } catch (_) {
+    // Vercel serverless functions have a read-only filesystem
+  }
 }
 
 function publicUser(u) {
@@ -1086,24 +1090,34 @@ function filterRequests(user) {
   return db.requests;
 }
 
-server.listen(PORT, HOST, async () => {
-  console.log(`SAM listening on ${HOST}:${PORT}`);
-  try {
-    const res = await connectMySQL();
-    if (res?.success) {
-      await syncFromStoreToMySQL(db);
+if (!process.env.VERCEL) {
+  server.listen(PORT, HOST, async () => {
+    console.log(`SAM listening on ${HOST}:${PORT}`);
+    try {
+      const res = await connectMySQL();
+      if (res?.success) {
+        await syncFromStoreToMySQL(db);
+      }
+    } catch (err) {
+      console.warn("MySQL auto-connect check:", err.message);
     }
-  } catch (err) {
-    console.warn("MySQL auto-connect check:", err.message);
-  }
-  try {
-    const pRes = await connectPostgres();
-    if (pRes?.success) {
-      await syncFromStoreToPostgres(db);
+    try {
+      const pRes = await connectPostgres();
+      if (pRes?.success) {
+        await syncFromStoreToPostgres(db);
+      }
+    } catch (err) {
+      console.warn("Supabase auto-connect check:", err.message);
     }
-  } catch (err) {
-    console.warn("Supabase auto-connect check:", err.message);
-  }
-});
+  });
+}
 
-export default server;
+export { handleApi, send, server, db, connectMySQL, syncFromStoreToMySQL };
+export default async function handler(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  if (url.pathname.startsWith("/api/")) {
+    await handleApi(req, res, url);
+    return;
+  }
+  send(res, 404, "Not found");
+}
