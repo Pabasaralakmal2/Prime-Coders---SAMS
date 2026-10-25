@@ -16,6 +16,14 @@
 
 ### 🌐 **[Live Production URL: https://prime-coders-sams.vercel.app](https://prime-coders-sams.vercel.app/)**
 
+<br/>
+
+<a href="https://prime-coders-sams.vercel.app/">
+  <img src="./assest/1.png" alt="SAM Attendance System Live Interface" width="100%" style="border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);" />
+</a>
+
+<br/>
+
 </div>
 
 ---
