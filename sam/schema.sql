@@ -1,7 +1,3 @@
--- Prime Coders · Student Attendance Management System
--- MySQL 8 schema. The Node app uses a JSON store until you point it at MySQL.
--- Tables follow the conceptual ER: students, staff specialisation, sections,
--- attendance, medicals, requests, alerts, eligibility, course freeze.
 
 CREATE DATABASE IF NOT EXISTS prime_coders_attendance
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

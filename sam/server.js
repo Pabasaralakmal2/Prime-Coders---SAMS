@@ -15,12 +15,11 @@ const PORT = process.env.PORT || 8080;
 const HOST = "0.0.0.0";
 const SECRET = "prime-coders-sam-demo";
 
-// Supabase Storage config
 function getSupabaseStorageConfig() {
   let fileCfg = {};
   try {
     fileCfg = JSON.parse(fs.readFileSync(path.join(__dirname, "supabase.config.json"), "utf8"));
-  } catch (_) { /* no config yet */ }
+  } catch (_) { }
   return {
     projectUrl: process.env.SUPABASE_PROJECT_URL || fileCfg.projectUrl,
     anonKey: process.env.SUPABASE_ANON_KEY || fileCfg.anonKey,
@@ -28,10 +27,6 @@ function getSupabaseStorageConfig() {
   };
 }
 
-/**
- * Upload a Buffer to Supabase Storage and return the public URL.
- * Resolves to null if config is missing or upload fails (falls back silently).
- */
 function uploadToSupabaseStorage(fileBuffer, fileName, mimeType) {
   const cfg = getSupabaseStorageConfig();
   return new Promise((resolve) => {
@@ -48,8 +43,8 @@ function uploadToSupabaseStorage(fileBuffer, fileName, mimeType) {
       path: urlPath,
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${_sbCfg.anonKey}`,
-        "apikey": _sbCfg.anonKey,
+        "Authorization": `Bearer ${cfg.anonKey}`,
+        "apikey": cfg.anonKey,
         "Content-Type": mimeType || "application/octet-stream",
         "Content-Length": fileBuffer.length,
         "x-upsert": "true",
@@ -214,9 +209,7 @@ let db = load();
 function save() {
   try {
     fs.writeFileSync(STORE, JSON.stringify(db, null, 2));
-  } catch (_) {
-    // Vercel serverless functions have a read-only filesystem
-  }
+  } catch (_) { }
 }
 
 function publicUser(u) {
@@ -493,11 +486,11 @@ async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/auth/unregistered-lecturers") {
     const list = db.lecturers
       .filter((l) => {
-        if (!l.userId) return true; // no linked user yet
+        if (!l.userId) return true;
         const u = db.users.find((u) => u.id === l.userId);
-        if (!u) return true; // user deleted
-        if (u.role === "hod") return false; // HOD already has full access
-        return false; // active user means already activated
+        if (!u) return true;
+        if (u.role === "hod") return false;
+        return false;
       })
       .map((l) => ({
         id: l.id,
@@ -730,13 +723,11 @@ async function handleApi(req, res, url) {
       attachmentName = String(body.fileName).slice(0, 200);
       attachmentType = mimeType;
 
-      // Try Supabase Storage first
       const sbResult = await uploadToSupabaseStorage(fileBuffer, body.fileName, mimeType);
       if (sbResult) {
         attachmentUrl = sbResult.publicUrl;
         console.log("[Supabase Storage] uploaded:", sbResult.publicUrl);
       } else {
-        // Fallback: save locally
         const uploadDir = path.join(PUBLIC, "uploads", "medicals");
         if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
         const safeName = Date.now() + "_" + path.basename(body.fileName).replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -985,7 +976,6 @@ async function handleApi(req, res, url) {
     audit(user, `Imported Excel workbook: ${summary.coursesCount} courses, ${summary.studentsCount} students, ${summary.attendanceCount} marks`);
     save();
 
-    // Re-sync to MySQL if connected
     try {
       await syncFromStoreToMySQL(db);
     } catch (e) {

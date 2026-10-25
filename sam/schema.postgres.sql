@@ -1,5 +1,3 @@
--- Prime Coders · Student Attendance Management System
--- PostgreSQL / Supabase Schema
 
 CREATE TABLE IF NOT EXISTS roles (
   role_code VARCHAR(32) PRIMARY KEY,

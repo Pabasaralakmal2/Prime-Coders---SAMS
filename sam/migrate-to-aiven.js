@@ -23,7 +23,6 @@ async function run() {
   const conn = await mysql.createConnection(aivenConfig);
   console.log("Connected successfully to Aiven!");
 
-  // 1. Apply Schema
   console.log("Applying schema...");
   let sql = fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -47,7 +46,6 @@ async function run() {
     }
   }
 
-  // Ensure attachment columns on medical_reports
   try {
     await conn.query(`
       ALTER TABLE medical_reports 
@@ -55,9 +53,8 @@ async function run() {
       ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(200),
       ADD COLUMN IF NOT EXISTS attachment_type VARCHAR(100);
     `);
-  } catch (e) { /* ignore if already exists */ }
+  } catch (e) { }
 
-  // 2. Roles
   console.log("Inserting roles...");
   await conn.query(`
     INSERT IGNORE INTO roles (role_code, label) VALUES
@@ -71,10 +68,8 @@ async function run() {
     ('student', 'Student');
   `);
 
-  // Load store data
   const store = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "store.json"), "utf8"));
 
-  // Department
   if (store.department) {
     await conn.query(
       "INSERT IGNORE INTO departments (department_id, department_name, faculty) VALUES (?, ?, ?)",
@@ -82,7 +77,6 @@ async function run() {
     );
   }
 
-  // Users
   for (const u of store.users || []) {
     await conn.query(
       "INSERT IGNORE INTO users (user_id, email, password_hash, role_code, display_name, status) VALUES (?, ?, ?, ?, ?, ?)",
@@ -90,7 +84,6 @@ async function run() {
     );
   }
 
-  // Semesters
   for (const s of store.semesters || []) {
     await conn.query(
       "INSERT IGNORE INTO semesters (semester_id, semester_name, academic_year, start_date, end_date, week_count, current_week, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -98,7 +91,6 @@ async function run() {
     );
   }
 
-  // Students
   console.log(`Inserting ${store.students?.length} students...`);
   for (const s of store.students || []) {
     await conn.query(
@@ -107,7 +99,6 @@ async function run() {
     );
   }
 
-  // Lecturers
   for (const l of store.lecturers || []) {
     await conn.query(
       "INSERT IGNORE INTO lecturers (lecturer_id, user_id, employee_no, name_with_initials, phone_no, qualification, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -115,7 +106,6 @@ async function run() {
     );
   }
 
-  // Courses
   for (const c of store.courses || []) {
     await conn.query(
       "INSERT IGNORE INTO courses (course_id, course_code, course_name, credit_value, course_type) VALUES (?, ?, ?, ?, ?)",
@@ -123,7 +113,6 @@ async function run() {
     );
   }
 
-  // Sections
   for (const sec of store.sections || []) {
     await conn.query(
       "INSERT IGNORE INTO course_sections (section_id, course_id, semester_id, section_code, lecture_days, start_time, end_time, venue, frozen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -131,7 +120,6 @@ async function run() {
     );
   }
 
-  // Lecturer assignments
   for (const sec of store.sections || []) {
     if (sec.lecturerId) {
       await conn.query(
@@ -141,7 +129,6 @@ async function run() {
     }
   }
 
-  // Enrollments
   console.log(`Inserting ${store.enrollments?.length} enrollments...`);
   for (const e of store.enrollments || []) {
     await conn.query(
@@ -150,7 +137,6 @@ async function run() {
     );
   }
 
-  // Attendance
   console.log(`Inserting ${store.attendance?.length} attendance records in batches...`);
   const BATCH_SIZE = 500;
   for (let i = 0; i < (store.attendance || []).length; i += BATCH_SIZE) {
@@ -166,7 +152,6 @@ async function run() {
     );
   }
 
-  // Medical reports
   for (const m of store.medicals || []) {
     await conn.query(
       `INSERT IGNORE INTO medical_reports 
@@ -176,7 +161,6 @@ async function run() {
     );
   }
 
-  // Alerts
   for (const a of store.alerts || []) {
     await conn.query(
       `INSERT IGNORE INTO alerts (alert_id, alert_type, student_id, section_id, triggered_date, message, severity, status) 

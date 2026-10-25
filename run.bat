@@ -4,7 +4,6 @@ echo ====================================================
 echo  SAM - Student Attendance Management System
 echo ====================================================
 
-:: Check if Node.js is installed
 where node >nul 2>nul
 if %errorlevel% neq 0 (
   echo.
@@ -16,7 +15,6 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
-:: Auto-install packages if node_modules is missing
 if not exist "node_modules" (
   echo.
   echo  Installing required packages... please wait...

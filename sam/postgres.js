@@ -94,7 +94,6 @@ async function applyPostgresSchema() {
       const sql = fs.readFileSync(SCHEMA_PATH, "utf8");
       await pool.query(sql);
 
-      // Seed standard roles
       await pool.query(`
         INSERT INTO roles (role_code, label) VALUES
         ('hod', 'Head of Department'),
@@ -118,7 +117,6 @@ export async function syncFromStoreToPostgres(storeData) {
   try {
     await client.query("BEGIN");
 
-    // Check if users seeded
     const uRes = await client.query("SELECT COUNT(*) AS c FROM users");
     if (parseInt(uRes.rows[0]?.c, 10) > 0) {
       await client.query("COMMIT");
@@ -127,7 +125,6 @@ export async function syncFromStoreToPostgres(storeData) {
 
     console.log("[Supabase] Seeding store records into PostgreSQL...");
 
-    // Department
     if (storeData.department) {
       await client.query(
         "INSERT INTO departments (department_id, department_name, faculty) VALUES ($1, $2, $3) ON CONFLICT (department_id) DO NOTHING",
@@ -135,7 +132,6 @@ export async function syncFromStoreToPostgres(storeData) {
       );
     }
 
-    // Users
     for (const u of storeData.users || []) {
       await client.query(
         "INSERT INTO users (user_id, email, password_hash, role_code, display_name, status) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (user_id) DO NOTHING",
@@ -143,7 +139,6 @@ export async function syncFromStoreToPostgres(storeData) {
       );
     }
 
-    // Semesters
     for (const s of storeData.semesters || []) {
       await client.query(
         `INSERT INTO semesters 
@@ -153,7 +148,6 @@ export async function syncFromStoreToPostgres(storeData) {
       );
     }
 
-    // Students
     for (const s of storeData.students || []) {
       await client.query(
         `INSERT INTO students 
@@ -163,7 +157,6 @@ export async function syncFromStoreToPostgres(storeData) {
       );
     }
 
-    // Lecturers
     for (const l of storeData.lecturers || []) {
       await client.query(
         `INSERT INTO lecturers 
@@ -173,7 +166,6 @@ export async function syncFromStoreToPostgres(storeData) {
       );
     }
 
-    // Courses
     for (const c of storeData.courses || []) {
       await client.query(
         "INSERT INTO courses (course_id, course_code, course_name, credit_value, course_type) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (course_id) DO NOTHING",
@@ -181,7 +173,6 @@ export async function syncFromStoreToPostgres(storeData) {
       );
     }
 
-    // Course Sections
     for (const sec of storeData.sections || []) {
       await client.query(
         `INSERT INTO course_sections 
@@ -191,7 +182,6 @@ export async function syncFromStoreToPostgres(storeData) {
       );
     }
 
-    // Lecturer Assignments
     for (const a of storeData.assignments || []) {
       await client.query(
         "INSERT INTO lecturer_assignments (assignment_id, section_id, lecturer_id) VALUES ($1, $2, $3) ON CONFLICT (section_id, lecturer_id) DO NOTHING",
@@ -199,7 +189,6 @@ export async function syncFromStoreToPostgres(storeData) {
       );
     }
 
-    // Enrollments
     for (const e of storeData.enrollments || []) {
       await client.query(
         "INSERT INTO enrollments (enrollment_id, section_id, student_id) VALUES ($1, $2, $3) ON CONFLICT (section_id, student_id) DO NOTHING",
@@ -207,7 +196,6 @@ export async function syncFromStoreToPostgres(storeData) {
       );
     }
 
-    // Attendance
     for (const att of storeData.attendance || []) {
       await client.query(
         `INSERT INTO attendance 
@@ -218,7 +206,6 @@ export async function syncFromStoreToPostgres(storeData) {
       );
     }
 
-    // Medical reports
     for (const m of storeData.medicals || []) {
       await client.query(
         `INSERT INTO medical_reports 
@@ -229,7 +216,6 @@ export async function syncFromStoreToPostgres(storeData) {
       );
     }
 
-    // Requests
     for (const r of storeData.requests || []) {
       await client.query(
         `INSERT INTO student_requests 

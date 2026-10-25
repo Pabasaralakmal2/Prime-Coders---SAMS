@@ -40,7 +40,6 @@ export async function connectMySQL(customConfig = null) {
   const sslOpt = cfg.ssl || (cfg.host && (cfg.host.includes("aivencloud") || cfg.host.includes(".com") || cfg.host.includes(".net")) ? { rejectUnauthorized: false } : undefined);
 
   try {
-    // Try to ensure database exists (works on local MySQL, gracefully skips on managed cloud MySQL)
     try {
       const rootConn = await mysql.createConnection({
         host: cfg.host,
@@ -55,10 +54,8 @@ export async function connectMySQL(customConfig = null) {
       );
       await rootConn.end();
     } catch (_) {
-      // Cloud providers like Aiven already have the database created
     }
 
-    // Now create pool with database
     pool = mysql.createPool({
       host: cfg.host,
       port: cfg.port,
@@ -72,13 +69,10 @@ export async function connectMySQL(customConfig = null) {
       multipleStatements: true,
     });
 
-    // Test query
     const [rows] = await pool.query("SELECT 1 AS ok");
     if (rows && rows[0]?.ok === 1) {
       isConnected = true;
       console.log(`[MySQL] Successfully connected to ${cfg.user}@${cfg.host}:${cfg.port}/${cfg.database}`);
-      
-      // Ensure tables exist
       await applySchema();
       return { success: true };
     }
@@ -107,7 +101,6 @@ async function applySchema() {
   try {
     if (fs.existsSync(SCHEMA_PATH)) {
       let sql = fs.readFileSync(SCHEMA_PATH, "utf8");
-      // Strip line comments and block comments
       sql = sql
         .replace(/\/\*[\s\S]*?\*\//g, "")
         .replace(/--.*$/gm, "")
@@ -133,7 +126,6 @@ async function applySchema() {
 
       await pool.query("SET FOREIGN_KEY_CHECKS = 1;");
 
-      // Ensure standard roles exist
       await pool.query(`
         INSERT IGNORE INTO roles (role_code, label) VALUES
         ('hod', 'Head of Department'),
@@ -157,16 +149,14 @@ export async function syncFromStoreToMySQL(storeData) {
     try {
       await conn.beginTransaction();
 
-      // Check if users table already has records
       const [uRows] = await conn.query("SELECT COUNT(*) AS c FROM users");
       if (uRows[0]?.c > 0) {
         await conn.commit();
-        return true; // Already seeded
+        return true;
       }
 
       console.log("[MySQL] Seeding data from store into MySQL...");
 
-      // Department
       if (storeData.department) {
         await conn.query(
           "INSERT IGNORE INTO departments (department_id, department_name, faculty) VALUES (?, ?, ?)",
@@ -174,7 +164,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Users
       for (const u of storeData.users || []) {
         await conn.query(
           "INSERT IGNORE INTO users (user_id, email, password_hash, role_code, display_name, status) VALUES (?, ?, ?, ?, ?, ?)",
@@ -182,7 +171,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Semesters
       for (const s of storeData.semesters || []) {
         await conn.query(
           `INSERT IGNORE INTO semesters 
@@ -192,7 +180,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Students
       for (const s of storeData.students || []) {
         await conn.query(
           `INSERT IGNORE INTO students 
@@ -202,7 +189,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Lecturers
       for (const l of storeData.lecturers || []) {
         await conn.query(
           `INSERT IGNORE INTO lecturers 
@@ -212,7 +198,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Committees
       if (storeData.committee) {
         await conn.query(
           "INSERT IGNORE INTO committees (committee_id, committee_name, description) VALUES (?, ?, ?)",
@@ -226,7 +211,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // HOD
       if (storeData.hod) {
         await conn.query(
           "INSERT IGNORE INTO hods (hod_id, user_id, department_id, name_with_initials) VALUES (?, ?, ?, ?)",
@@ -234,7 +218,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Courses
       for (const c of storeData.courses || []) {
         await conn.query(
           "INSERT IGNORE INTO courses (course_id, course_code, course_name, credit_value, course_type) VALUES (?, ?, ?, ?, ?)",
@@ -242,7 +225,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Sections
       for (const sec of storeData.sections || []) {
         await conn.query(
           `INSERT IGNORE INTO course_sections 
@@ -252,7 +234,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Assignments
       for (const a of storeData.assignments || []) {
         await conn.query(
           "INSERT IGNORE INTO lecturer_assignments (assignment_id, section_id, lecturer_id) VALUES (?, ?, ?)",
@@ -260,7 +241,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Enrollments
       for (const e of storeData.enrollments || []) {
         await conn.query(
           "INSERT IGNORE INTO enrollments (enrollment_id, section_id, student_id) VALUES (?, ?, ?)",
@@ -268,7 +248,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Attendance
       for (const att of storeData.attendance || []) {
         await conn.query(
           `INSERT IGNORE INTO attendance 
@@ -278,7 +257,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Medicals
       for (const m of storeData.medicals || []) {
         await conn.query(
           `INSERT IGNORE INTO medical_reports 
@@ -288,7 +266,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Requests
       for (const r of storeData.requests || []) {
         await conn.query(
           `INSERT IGNORE INTO student_requests 
@@ -298,7 +275,6 @@ export async function syncFromStoreToMySQL(storeData) {
         );
       }
 
-      // Alerts
       for (const al of storeData.alerts || []) {
         await conn.query(
           `INSERT IGNORE INTO alerts 

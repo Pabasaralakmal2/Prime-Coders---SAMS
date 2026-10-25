@@ -259,7 +259,6 @@ select.mark { padding: 6px 8px; border-radius: 8px; }
   .main { padding: 18px 14px 40px; }
 }
 
-/* Medical upload area */
 .med-upload-area {
   border: 2px dashed var(--line);
   border-radius: 12px;

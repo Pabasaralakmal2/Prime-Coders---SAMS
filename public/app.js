@@ -380,7 +380,6 @@ function home() {
   const portalActor = state.user.role === "demo" ? "Demonstrator" : "Lecturer";
   const portalTitle = state.user.role === "demo" ? "Demonstrator Portal" : (isLecturerPortal ? "Lecturer Portal" : "Head of Department");
 
-  // Identify assigned sections for this lecturer / demonstrator
   const mySections = d.sections.filter((s) => {
     if (state.user.lecturerId && s.lecturerIds?.includes(state.user.lecturerId)) return true;
     if (state.user.role === "hod" && state.portalMode === "lecturer") {
@@ -391,7 +390,6 @@ function home() {
   });
   const mySectionIds = new Set(mySections.map((s) => s.id));
 
-  // If in lecturer or demo portal, show eligibility strictly for assigned subjects only!
   const mine = isLecturerPortal
     ? d.eligibility.filter((e) => mySectionIds.has(e.sectionId))
     : d.eligibility;
@@ -621,7 +619,6 @@ function medicalPage() {
     </table></section></div>`;
 }
 function afterMedical() {
-  // File attachment handling
   const fileInput = app.querySelector("#med-file-input");
   const uploadArea = app.querySelector("#med-upload-area");
   const filePreview = app.querySelector("#med-file-preview");
@@ -667,7 +664,6 @@ function afterMedical() {
     };
   }
 
-  // Drag and drop
   if (uploadArea) {
     uploadArea.ondragover = (e) => { e.preventDefault(); uploadArea.classList.add("dragover"); };
     uploadArea.ondragleave = () => uploadArea.classList.remove("dragover");
@@ -929,7 +925,6 @@ function afterAdmin() {
     } catch (e) { err(e); }
   };
 
-  // Excel Importer
   const importStatus = app.querySelector("#excel-import-status");
   const defaultBtn = app.querySelector("#import-default-excel");
   const fileInput = app.querySelector("#excel-file-input");
@@ -989,7 +984,6 @@ function afterAdmin() {
     };
   }
 
-  // Add Visiting Lecturer
   const addVlBtn = app.querySelector("#vl-add-btn");
   if (addVlBtn) {
     addVlBtn.onclick = async () => {

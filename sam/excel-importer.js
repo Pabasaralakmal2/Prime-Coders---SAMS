@@ -62,7 +62,6 @@ export function parseExcelWorkbook(filePathOrBuffer) {
       lecturerName = coursesMap.get(courseCode).lecturer;
     }
 
-    // Find header row (usually contains 'Reg_no')
     let headerRowIdx = -1;
     for (let r = 0; r < Math.min(10, rows.length); r++) {
       const rowStr = JSON.stringify(rows[r] || "");
@@ -73,7 +72,6 @@ export function parseExcelWorkbook(filePathOrBuffer) {
     }
     if (headerRowIdx === -1) headerRowIdx = 5;
 
-    // Student rows start after header row
     for (let r = headerRowIdx + 1; r < rows.length; r++) {
       const row = rows[r];
       if (!row || !row[1]) continue;
@@ -92,7 +90,6 @@ export function parseExcelWorkbook(filePathOrBuffer) {
         });
       }
 
-      // Weeks 1 to 15 are in row[4] to row[18]
       for (let w = 1; w <= 15; w++) {
         const val = row[3 + w];
         if (val !== undefined && val !== null && String(val).trim() !== "") {
@@ -131,12 +128,10 @@ export function importExcelDataIntoDb(db, parsedData, options = {}) {
   const semesterName = options.semesterName || "Year 1 Semester 2 (2024/2025)";
   const academicYear = options.academicYear || "2024/2025";
 
-  // 1. Mark existing active semesters as closed
   for (const s of db.semesters) {
     if (s.status === "active") s.status = "closed";
   }
 
-  // 2. Create the new semester
   const newSemesterId = (db.semesters.reduce((m, s) => Math.max(m, s.id), 0) || 0) + 1;
   const newSemester = {
     id: newSemesterId,
@@ -145,12 +140,11 @@ export function importExcelDataIntoDb(db, parsedData, options = {}) {
     start: options.startDate || "2026-07-13",
     end: options.endDate || "2026-10-30",
     weekCount: 15,
-    currentWeek: 11, // Excel sheet has data up to week 11
+    currentWeek: 11,
     status: "active",
   };
   db.semesters.push(newSemester);
 
-  // 3. Clear old mock students, courses, sections, enrollments, attendance, medicals, alerts, eligibility
   db.courses = [];
   db.sections = [];
   db.assignments = [];
@@ -163,11 +157,8 @@ export function importExcelDataIntoDb(db, parsedData, options = {}) {
   db.eligibility = [];
   db.freezes = [];
 
-  // Keep HOD, Dean, and Committee accounts intact!
-  // Remove old mock student users (keep non-students)
   db.users = db.users.filter((u) => u.role !== "student" && u.role !== "lecturer" && u.role !== "visiting");
 
-  // Ensure default HOD user exists with Dr. K. A. S. H. Kulathilake
   let hodUser = db.users.find((u) => u.role === "hod");
   if (!hodUser) {
     hodUser = {
@@ -185,7 +176,6 @@ export function importExcelDataIntoDb(db, parsedData, options = {}) {
 
   db.hod = { id: 1, userId: hodUser.id, departmentId: 1, name: "Dr. K. A. S. H. Kulathilake" };
 
-  // 4. Create lecturers
   db.lecturers = [];
   let nextLecId = 1;
 
@@ -195,7 +185,6 @@ export function importExcelDataIntoDb(db, parsedData, options = {}) {
     const isHODLecturer = l.isHOD && hodUser;
     db.lecturers.push({
       id: lecId,
-      // HOD/Senior Lecturer is linked directly to the existing HOD user account (hod@rjt.ac.lk)
       userId: isHODLecturer ? hodUser.id : null,
       employeeNo: isHODLecturer ? `SL-${1000 + lecId}` : (l.role === "demo" ? `DEMO-${1000 + lecId}` : `LEC-${1000 + lecId}`),
       name: l.name,
@@ -210,7 +199,6 @@ export function importExcelDataIntoDb(db, parsedData, options = {}) {
     lecturerIdMap.set(l.name, lecId);
   }
 
-  // 5. Create courses and course sections
   let nextCourseId = 1;
   let nextSecId = 1;
   let nextAssignId = 1;
@@ -245,7 +233,6 @@ export function importExcelDataIntoDb(db, parsedData, options = {}) {
     db.sections.push(sectionObj);
     sectionIdMap.set(c.code, secId);
 
-    // Assign lecturer
     const lecId = lecturerIdMap.get(c.lecturer);
     if (lecId) {
       db.assignments.push({
@@ -256,7 +243,6 @@ export function importExcelDataIntoDb(db, parsedData, options = {}) {
     }
   }
 
-  // 6. Create students
   let nextStuId = 1;
   const studentRegMap = new Map();
 
@@ -264,7 +250,7 @@ export function importExcelDataIntoDb(db, parsedData, options = {}) {
     const sid = nextStuId++;
     const studentObj = {
       id: sid,
-      userId: null, // Student has to create account on first login with reg no
+      userId: null,
       registrationNo: s.registrationNo,
       indexNo: s.indexNo,
       name: s.name,
@@ -275,7 +261,6 @@ export function importExcelDataIntoDb(db, parsedData, options = {}) {
     db.students.push(studentObj);
     studentRegMap.set(s.registrationNo, sid);
 
-    // Enroll in all 7 sections
     for (const sec of db.sections) {
       db.enrollments.push({
         id: db.enrollments.length + 1,
@@ -285,7 +270,6 @@ export function importExcelDataIntoDb(db, parsedData, options = {}) {
     }
   }
 
-  // 7. Insert attendance records
   let nextAttId = 1;
   function getWeekDate(start, week) {
     const d = new Date(start + "T00:00:00Z");
@@ -306,12 +290,11 @@ export function importExcelDataIntoDb(db, parsedData, options = {}) {
       date,
       weekNo: att.weekNo,
       status: att.status,
-      recordedBy: 1, // HOD imported
+      recordedBy: 1,
       recordedTime: new Date().toISOString(),
     });
   }
 
-  // Update counters
   const nextUserId = (db.users.reduce((m, u) => Math.max(m, u.id), 0) || 0) + 1;
   db.next = {
     user: nextUserId + 10,
