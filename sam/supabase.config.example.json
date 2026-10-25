@@ -1,0 +1,10 @@
+{
+  "host": "db.your-project.supabase.co",
+  "port": 5432,
+  "database": "postgres",
+  "user": "postgres",
+  "password": "YOUR_SUPABASE_DB_PASSWORD",
+  "projectUrl": "https://your-project.supabase.co",
+  "anonKey": "YOUR_SUPABASE_ANON_KEY",
+  "storageBucket": "Medicals"
+}

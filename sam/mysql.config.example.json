@@ -1,0 +1,10 @@
+{
+  "host": "your-mysql-host.aivencloud.com",
+  "port": 26308,
+  "user": "avnadmin",
+  "password": "YOUR_MYSQL_PASSWORD_HERE",
+  "database": "defaultdb",
+  "ssl": {
+    "rejectUnauthorized": false
+  }
+}

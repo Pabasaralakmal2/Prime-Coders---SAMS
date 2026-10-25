@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables & local secrets
+.env
+.env.local
+.env.*.local
+
+# Sensitive config files containing real passwords/keys
+sam/mysql.config.json
+sam/supabase.config.json
+
+# User uploaded medical certificates
+sam/public/uploads/
+
+# Operating System files
+.DS_Store
+Thumbs.db

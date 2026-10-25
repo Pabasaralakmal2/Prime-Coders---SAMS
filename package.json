@@ -1,0 +1,16 @@
+{
+  "name": "sam-attendance-system",
+  "version": "1.0.0",
+  "description": "Student Attendance Management System (SAM) for Rajarata University",
+  "main": "sam/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node sam/server.js",
+    "dev": "node sam/server.js"
+  },
+  "dependencies": {
+    "mysql2": "^3.24.6",
+    "pg": "^8.16.3",
+    "xlsx": "^0.18.5"
+  }
+}
