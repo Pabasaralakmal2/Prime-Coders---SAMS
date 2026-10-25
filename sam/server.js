@@ -1112,8 +1112,23 @@ if (!process.env.VERCEL) {
   });
 }
 
+let _autoConnected = false;
+async function ensureDbInit() {
+  if (_autoConnected) return;
+  _autoConnected = true;
+  try {
+    const res = await connectMySQL();
+    if (res?.success) {
+      await syncFromStoreToMySQL(db);
+    }
+  } catch (err) {
+    console.warn("MySQL auto-connect check:", err.message);
+  }
+}
+
 export { handleApi, send, server, db, connectMySQL, syncFromStoreToMySQL };
 export default async function handler(req, res) {
+  await ensureDbInit();
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   if (url.pathname.startsWith("/api/")) {
     await handleApi(req, res, url);
