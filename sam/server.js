@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { connectMySQL, getStatus as getMySQLStatus, syncFromStoreToMySQL, saveMySQLConfig, persistAttendanceMark,
+import { connectMySQL, getStatus as getMySQLStatus, syncFromStoreToMySQL, saveMySQLConfig, persistAttendanceMark, persistAttendanceMarksBatch,
   loadFromMySQL, persistUser, persistStudentUserId, persistLecturerUserId, persistSemesterWeek,
   persistSectionFrozen, persistMedical, persistMedicalReview, persistRequest, persistAlert,
   persistAlertStatus, persistAudit, persistSemesterStatus, persistFreeze } from "./mysql.js";
@@ -194,9 +194,18 @@ function seed() {
 }
 
 function weekDate(start, week) {
-  const d = new Date(start + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + (week - 1) * 7);
-  return d.toISOString().slice(0, 10);
+  try {
+    if (!start) throw new Error("Missing start date");
+    const clean = String(start).slice(0, 10);
+    const d = new Date(clean.length === 10 ? clean + "T00:00:00Z" : start);
+    if (isNaN(d.getTime())) throw new Error("Invalid date");
+    d.setUTCDate(d.getUTCDate() + (Number(week || 1) - 1) * 7);
+    return d.toISOString().slice(0, 10);
+  } catch (_) {
+    const fallback = new Date();
+    fallback.setUTCDate(fallback.getUTCDate() + ((Number(week || 1)) - 1) * 7);
+    return fallback.toISOString().slice(0, 10);
+  }
 }
 
 function load() {
@@ -701,7 +710,8 @@ async function handleApi(req, res, url) {
     const weekNo = Number(body.weekNo);
     const reason = canEditAttendance(user, section, weekNo);
     if (reason) { send(res, 403, { error: reason }); return; }
-    const date = body.date || weekDate(db.semesters.find((s) => s.id === section.semesterId).start, weekNo);
+    const sem = db.semesters.find((s) => s.id === section.semesterId);
+    const date = body.date || weekDate(sem?.start, weekNo);
     const allowed = new Set(["Present", "Absent", "Medical", "Excused"]);
     for (const mark of body.marks || []) {
       if (!allowed.has(mark.status)) continue;
@@ -723,9 +733,10 @@ async function handleApi(req, res, url) {
     recalcAll();
     raiseAlerts();
     audit(user, `attendance section ${section.id} week ${weekNo}`);
-    for (const mark of body.marks || []) {
-      if (!new Set(["Present", "Absent", "Medical", "Excused"]).has(mark.status)) continue;
-      persistAttendanceMark(section.id, Number(mark.studentId), weekNo, mark.status, user.id, date);
+    try {
+      await persistAttendanceMarksBatch(section.id, weekNo, body.marks || [], user.id, date);
+    } catch (e) {
+      console.warn("[MySQL] Failed to batch persist attendance:", e.message);
     }
     save();
     send(res, 200, { ok: true });
@@ -1156,11 +1167,16 @@ if (!process.env.VERCEL) {
 
 export { handleApi, send, server, db, connectMySQL, syncFromStoreToMySQL };
 export default async function handler(req, res) {
-  await ensureDbInit();
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  if (url.pathname.startsWith("/api/")) {
-    await handleApi(req, res, url);
-    return;
+  try {
+    await ensureDbInit();
+    const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    if (url.pathname.startsWith("/api/")) {
+      await handleApi(req, res, url);
+      return;
+    }
+    send(res, 404, "Not found");
+  } catch (err) {
+    console.error("[SAM Serverless Error]", err);
+    send(res, 500, { error: err.message || "Internal server error" });
   }
-  send(res, 404, "Not found");
 }

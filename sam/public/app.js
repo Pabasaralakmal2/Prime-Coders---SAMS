@@ -120,7 +120,7 @@ function mysqlStatusBadge() {
       <span class="mysql-dot off"></span>
       <div style="flex:1">
         <b>MySQL: Not Connected</b>
-        <span class="note" style="display:block;margin-top:2px">Service MySQL80 running. Connect with password.</span>
+        <span class="note" style="display:block;margin-top:2px">Service MySQL80 running. Default root password is 'root'.</span>
       </div>
       <button type="button" class="btn tiny ghost" id="toggle-mysql-btn">${state.showMysqlConfig ? "Hide" : "Connect"}</button>
     </div>
@@ -128,7 +128,7 @@ function mysqlStatusBadge() {
       <div class="mysql-config-box">
         <label>Host</label><input id="my-host" value="${esc(state.mysql?.host || "localhost")}" />
         <label>User</label><input id="my-user" value="${esc(state.mysql?.user || "root")}" />
-        <label>Password</label><input id="my-pass" type="password" placeholder="MySQL root password" />
+        <label>Password</label><input id="my-pass" type="password" placeholder="MySQL root password" value="root" />
         <label>Database</label><input id="my-db" value="${esc(state.mysql?.database || "prime_coders_attendance")}" />
         <p class="error" id="my-err">${esc(state.mysql?.error || "")}</p>
         <button type="button" class="btn gold tiny" id="save-mysql-btn" style="margin-top:8px">Test & Save Connection</button>
