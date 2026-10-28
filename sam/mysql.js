@@ -18,19 +18,27 @@ export function getMySQLConfig() {
   }
 
   const defCloudPass = Buffer.from("QVZOU19GTXZKTndqV3h4TzVYcmZtd1hP", "base64").toString("utf8");
+  const cloudHost = "mysql-33702dc4-pabasaralakmal75-6554.f.aivencloud.com";
+  const isVercel = !!process.env.VERCEL;
+
+  const host = process.env.MYSQL_HOST || (isVercel ? cloudHost : fileConfig.host) || cloudHost;
 
   return {
-    host: process.env.MYSQL_HOST || fileConfig.host || "mysql-33702dc4-pabasaralakmal75-6554.f.aivencloud.com",
-    port: Number(process.env.MYSQL_PORT || fileConfig.port || 26308),
-    user: process.env.MYSQL_USER || fileConfig.user || "avnadmin",
-    password: process.env.MYSQL_PASSWORD !== undefined ? process.env.MYSQL_PASSWORD : (fileConfig.password !== undefined ? fileConfig.password : defCloudPass),
-    database: process.env.MYSQL_DATABASE || fileConfig.database || "defaultdb",
-    ssl: fileConfig.ssl || { rejectUnauthorized: false },
+    host,
+    port: Number(process.env.MYSQL_PORT || (host === cloudHost ? 26308 : fileConfig.port) || 26308),
+    user: process.env.MYSQL_USER || (host === cloudHost ? "avnadmin" : fileConfig.user) || "avnadmin",
+    password: process.env.MYSQL_PASSWORD !== undefined ? process.env.MYSQL_PASSWORD : ((host === cloudHost && fileConfig.password ? fileConfig.password : (fileConfig.password || defCloudPass))),
+    database: process.env.MYSQL_DATABASE || (host === cloudHost ? "defaultdb" : fileConfig.database) || "defaultdb",
+    ssl: (host === cloudHost || host.includes("aivencloud") || host.includes(".com")) ? { rejectUnauthorized: false } : (fileConfig.ssl || undefined),
   };
 }
 
 export function saveMySQLConfig(config) {
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
+  } catch (e) {
+    console.warn("Failed to save mysql.config.json:", e.message);
+  }
 }
 
 let pool = null;
@@ -40,20 +48,22 @@ let connectionError = null;
 async function tryConnect(cfg) {
   const sslOpt = cfg.ssl || (cfg.host && (cfg.host.includes("aivencloud") || cfg.host.includes(".com") || cfg.host.includes(".net")) ? { rejectUnauthorized: false } : undefined);
 
-  try {
-    const rootConn = await mysql.createConnection({
-      host: cfg.host,
-      port: cfg.port,
-      user: cfg.user,
-      password: cfg.password,
-      ssl: sslOpt,
-      connectTimeout: 5000,
-    });
-    await rootConn.query(
-      `CREATE DATABASE IF NOT EXISTS \`${cfg.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
-    );
-    await rootConn.end();
-  } catch (_) {
+  if (!cfg.host || (!cfg.host.includes("aivencloud") && !cfg.host.includes(".com"))) {
+    try {
+      const rootConn = await mysql.createConnection({
+        host: cfg.host,
+        port: cfg.port,
+        user: cfg.user,
+        password: cfg.password,
+        ssl: sslOpt,
+        connectTimeout: 5000,
+      });
+      await rootConn.query(
+        `CREATE DATABASE IF NOT EXISTS \`${cfg.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
+      );
+      await rootConn.end();
+    } catch (_) {
+    }
   }
 
   const newPool = mysql.createPool({
@@ -68,6 +78,7 @@ async function tryConnect(cfg) {
     queueLimit: 0,
     multipleStatements: true,
     dateStrings: true,
+    connectTimeout: 8000,
   });
 
   const [rows] = await newPool.query("SELECT 1 AS ok");
@@ -89,12 +100,11 @@ export async function connectMySQL(customConfig = null) {
   try {
     const res = await tryConnect(cfg);
     if (res.success) {
-      if (!customConfig) saveMySQLConfig(cfg);
+      if (customConfig) saveMySQLConfig(customConfig);
       return res;
     }
   } catch (err) {
-    // If auto-connecting without explicit customConfig, try common local fallbacks (e.g. root/root, root/empty)
-    if (!customConfig) {
+    if (!customConfig && !process.env.VERCEL && !cfg.host?.includes("aivencloud")) {
       const candidates = [
         { host: "localhost", port: 3306, user: "root", password: "root", database: "prime_coders_attendance" },
         { host: "localhost", port: 3306, user: "root", password: "", database: "prime_coders_attendance" },
@@ -109,8 +119,7 @@ export async function connectMySQL(customConfig = null) {
         try {
           const fbRes = await tryConnect(fallback);
           if (fbRes.success) {
-            saveMySQLConfig(fallback);
-            console.log(`[MySQL] Auto-connected using verified fallback (${fallback.user}@${fallback.host}) and saved config.`);
+            console.log(`[MySQL] Auto-connected using verified fallback (${fallback.user}@${fallback.host}).`);
             return fbRes;
           }
         } catch (_) {
@@ -137,9 +146,16 @@ export function getStatus() {
   };
 }
 
+let _schemaChecked = false;
 async function applySchema() {
-  if (!pool) return;
+  if (!pool || _schemaChecked) return;
   try {
+    const [existing] = await pool.query("SHOW TABLES LIKE 'users'");
+    if (existing && existing.length > 0) {
+      _schemaChecked = true;
+      return;
+    }
+    _schemaChecked = true;
     if (fs.existsSync(SCHEMA_PATH)) {
       let sql = fs.readFileSync(SCHEMA_PATH, "utf8");
       sql = sql

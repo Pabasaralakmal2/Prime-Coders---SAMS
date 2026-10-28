@@ -412,25 +412,32 @@ function audit(user, action) {
   persistAudit(at, user?.id || null, user?.email || "", action);
 }
 
-let _autoConnected = false;
+let _dbInitPromise = null;
 async function ensureDbInit() {
-  if (_autoConnected) return;
-  _autoConnected = true;
-  try {
-    const res = await connectMySQL();
-    if (res?.success) {
-      const mysqlData = await loadFromMySQL();
-      if (mysqlData && mysqlData.users && mysqlData.users.length > 0) {
-        Object.assign(db, mysqlData);
-        recalcAll();
-        console.log("[SAM] Loaded", db.users.length, "users from MySQL");
-      } else {
-        await syncFromStoreToMySQL(db);
+  const cur = getMySQLStatus();
+  if (cur.connected) return;
+  if (!_dbInitPromise) {
+    _dbInitPromise = (async () => {
+      try {
+        const res = await connectMySQL();
+        if (res?.success) {
+          const mysqlData = await loadFromMySQL();
+          if (mysqlData && mysqlData.users && mysqlData.users.length > 0) {
+            Object.assign(db, mysqlData);
+            recalcAll();
+            console.log("[SAM] Loaded", db.users.length, "users from MySQL");
+          } else {
+            await syncFromStoreToMySQL(db);
+          }
+        }
+      } catch (err) {
+        console.warn("MySQL auto-connect check:", err.message);
+      } finally {
+        _dbInitPromise = null;
       }
-    }
-  } catch (err) {
-    console.warn("MySQL auto-connect check:", err.message);
+    })();
   }
+  await _dbInitPromise;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -488,6 +495,7 @@ async function handleApi(req, res, url) {
     return;
   }
   if (req.method === "GET" && url.pathname === "/api/mysql/status") {
+    await ensureDbInit();
     send(res, 200, getMySQLStatus());
     return;
   }

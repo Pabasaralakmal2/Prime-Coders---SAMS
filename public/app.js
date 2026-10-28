@@ -120,7 +120,7 @@ function mysqlStatusBadge() {
       <span class="mysql-dot off"></span>
       <div style="flex:1">
         <b>MySQL: Not Connected</b>
-        <span class="note" style="display:block;margin-top:2px">Service MySQL80 running. Default root password is 'root'.</span>
+        <span class="note" style="display:block;margin-top:2px">${esc(state.mysql?.error ? "Error: " + state.mysql.error : "Click Connect to configure database credentials.")}</span>
       </div>
       <button type="button" class="btn tiny ghost" id="toggle-mysql-btn">${state.showMysqlConfig ? "Hide" : "Connect"}</button>
     </div>
